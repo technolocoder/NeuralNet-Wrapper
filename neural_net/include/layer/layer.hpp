@@ -7,6 +7,8 @@
 #include "PL.hpp"
 #include "CL.hpp"
 #include "FL.hpp"
+#include "FC.hpp"
+#include "SL.hpp"
 
 TEMPLATE struct layer{
     LAYER_TYPES type;
@@ -15,6 +17,8 @@ TEMPLATE struct layer{
         _PL<T> PL;
         _CL<T> CL;
         _FL<T> FL;
+        _FC<T> FC;
+        _SL<T> SL;
     };
 };
 

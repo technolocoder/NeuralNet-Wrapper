@@ -82,12 +82,33 @@ int main(){
     
     mnist_reader<float> reader(sample_size,"test/dataset/train-images","test/dataset/train-labels");
 
+    neural_network<float> net(64,9);
+    net.add_input_layer(cols,rows,1,false);
+    net.add_convolution_layer(3,3,1,1,10,TANH);
+    net.add_pooling_layer(2,2,2,2,AVG_POOL);
+    net.add_convolution_layer(7,7,1,1,30,TANH);
+    net.add_pooling_layer(2,2,1,1,AVG_POOL);
+    net.add_flatten_layer();
+    net.add_fully_connected(20,TANH);
+    net.add_fully_connected(10,LINEAR);
+    net.add_softmax_layer();
+    net.construct_neuralnet();
+
+    net.print_info();
+
+    dim output_dim = net.get_output_dimensions();
+    cout << output_dim.x << " " << output_dim.y << " " << output_dim.z << '\n';
+    const int o_rows = output_dim.x, o_cols = output_dim.y;
+
     float vertices[] = {
         -1,1,
         -1+2.0/cols,1,
         -1+2.0/cols,1-2.0/rows,
-        -1,1-2.0/rows
-    } , offsets[rows*cols*2];
+        -1,1-2.0/rows,
+        -1+2.0/o_cols,1,
+        -1+2.0/o_cols,1-2.0/o_rows,
+        -1,1-2.0/o_rows
+    } , offsets[rows*cols*2+o_rows*o_cols*2];
 
     for(int i = 0; i < rows; ++i){
         for(int j = 0; j < cols; ++j){
@@ -96,10 +117,26 @@ int main(){
         }
     }
 
+    for(int i = 0; i < o_rows; ++i){
+        for(int j = 0; j < o_cols; ++j){
+            offsets[rows*cols*2+i*o_cols*2+j*2  ] =  (float)j/o_cols*2.0;
+            offsets[rows*cols*2+i*o_cols*2+j*2+1] = -(float)i/o_rows*2.0;
+        }
+    }
+
     unsigned int indices[] = {
         0,1,2,
-        2,3,0
+        2,3,0,
+        0,4,5,
+        5,6,0
     };
+
+    float *output = (float*)malloc(output_dim.x*output_dim.y*output_dim.z*sample_size*sizeof(float));
+    memcpy(output,net.feedforward(reader.get_processed_image()),output_dim.x*output_dim.y*output_dim.z*sample_size*sizeof(float));
+    bool test_mode = false;
+    float input_data[rows*cols];
+    memset(input_data,0,sizeof(input_data));
+    int output_index = 0;
 
     GLuint vbo,vao,ebo,vbo_offset,vbo_color;
     glGenBuffers(1,&vbo);
@@ -114,7 +151,9 @@ int main(){
     glBufferData(GL_ARRAY_BUFFER,sizeof(offsets),offsets,GL_STATIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
-    glBufferData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,reader.get_processed_image(),GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols+sizeof(float)*o_cols*o_rows,NULL,GL_DYNAMIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,reader.get_processed_image());
+    glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,sizeof(float)*o_rows*o_cols,output);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(indices),indices,GL_STATIC_DRAW);
@@ -139,15 +178,8 @@ int main(){
     glVertexAttribDivisor(2,1);
 
     SDL_Event event;
-    bool quit = false, last_key = false;
-
-    neural_network<float> net;
-    net.initialize(sample_size,3);
-    net.add_input_layer(cols,rows,1,false);
-    net.add_convolution_layer(3,3,1,1,1,TANH);
-    net.add_flatten_layer();
-    net.construct_neuralnet();
-
+    bool quit = false, last_key = false, is_pressed = false;
+    double mouse_out_color = 0.0;
     int index = 0;
     chrono::time_point<chrono::high_resolution_clock> reference = chrono::high_resolution_clock::now();
     while(!quit){
@@ -163,28 +195,125 @@ int main(){
                     case SDLK_w:
                          if(last_key) continue;
                         last_key = true;
+                        if(test_mode) continue;
 
                         if(index < sample_size-1){
                             glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
-                            void *ptr = glMapBuffer(GL_ARRAY_BUFFER,GL_WRITE_ONLY);
-                            memcpy(ptr,reader.get_processed_image() + ++index*rows*cols,sizeof(float)*rows*cols);
-                            glUnmapBuffer(GL_ARRAY_BUFFER);
+                            glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,reader.get_processed_image()+784* ++index);
+                            glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),output+o_rows*o_cols*output_dim.z*index+o_cols*o_rows*output_index);
                         }
                         break;
                     case SDLK_s:
                         if(last_key) continue;
                         last_key = true;
+                        if(test_mode) continue;
                         if(index > 0){
                             glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
-                            void *ptr = glMapBuffer(GL_ARRAY_BUFFER,GL_WRITE_ONLY);
-                            memcpy(ptr,reader.get_processed_image() + --index*rows*cols,sizeof(float)*rows*cols);
-                            glUnmapBuffer(GL_ARRAY_BUFFER);
+                            glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,reader.get_processed_image()+784* --index);
+                            
+                            glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),output+o_rows*o_cols*output_dim.z*index+o_cols*o_rows*output_index);
                         }
+                        break;
+                    case SDLK_q:
+                        if(last_key) continue;
+                        last_key = true;
+                        
+                        if(test_mode){
+                            test_mode = false;
+                        
+                            glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                            glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,reader.get_processed_image()+784* index);
+                            glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),output+o_rows*o_cols*output_dim.z*index+output_index*o_cols*o_rows);
+                            net.set_sample_size(sample_size);
+                        }else{
+                            net.set_sample_size(1);
+                            float *net_out = net.feedforward(input_data);
+                        
+                            glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                            glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,input_data);
+                            glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),net_out);
+                            
+                            test_mode = true;
+                        }
+                        break;
+
+                    case SDLK_UP:
+                        if(last_key) continue;
+                        last_key = true;
+                        if(output_index < output_dim.z-1){
+                            if(!test_mode){
+                                glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                                glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,reader.get_processed_image()+784* index);
+                                glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),output+o_rows*o_cols*output_dim.z*index+o_cols*o_rows*++output_index);
+                            }else{
+                                net.set_sample_size(1);
+                                float *net_out = net.feedforward(input_data);
+
+                                glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                                glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,input_data);
+                                glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),net_out+o_cols*o_rows*++output_index);
+                            }
+                            break;
+                        }
+                    case SDLK_DOWN:
+                        if(last_key) continue;
+                        last_key = true;
+                        if(output_index>0){
+                            if(!test_mode){
+                                    glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                                    glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,reader.get_processed_image()+784* index);
+
+                                    glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),output+o_rows*o_cols*output_dim.z*index+o_cols*o_rows*--output_index);
+                            }else{
+                                net.set_sample_size(1);
+                                float *net_out = net.feedforward(input_data);
+
+                                glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                                glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,input_data);
+                                glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),net_out+o_cols*o_rows*--output_index);
+                            }
+                        }
+                        break;
+                    case SDLK_c:
+                        if(last_key) continue;
+                        last_key = true;
+                        if(!test_mode) continue;
+                        memset(input_data,0,sizeof(input_data));
+
+                        float *net_out = net.feedforward(input_data);
+                    
+                        glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+                        glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,input_data);
+                        glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),net_out);
                         break;
                 }
             }else if(event.type == SDL_KEYUP){
                 last_key = false;
+            }else if(event.type == SDL_MOUSEBUTTONDOWN){
+                is_pressed = true;
+            }else if(event.type == SDL_MOUSEBUTTONUP){
+                is_pressed = false;
+            }else if(event.type == SDL_MOUSEWHEEL){
+                mouse_out_color += event.wheel.y*0.05;
+                mouse_out_color = mouse_out_color>1.0?1.0:mouse_out_color<0.0?0.0:mouse_out_color;
             }
+        }
+
+        if(test_mode && is_pressed){
+            int x,y,i,j;
+            
+            SDL_GetMouseState(&x,&y);
+            j = x/(window_width/2/cols), i = y/(window_height/rows);
+            i = min(i,rows-1), j = min(j,cols-1);
+            input_data[i*cols+j] = mouse_out_color;
+            
+
+            net.set_sample_size(1);
+            float *net_out = net.feedforward(input_data);
+            
+            glBindBuffer(GL_ARRAY_BUFFER,vbo_color);
+            glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(float)*rows*cols,input_data);
+            glBufferSubData(GL_ARRAY_BUFFER,sizeof(float)*rows*cols,o_cols*o_rows*sizeof(float),net_out);
         }
         if(chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now()-reference).count()>=frame_delay){
             reference = chrono::high_resolution_clock::now();
@@ -196,7 +325,12 @@ int main(){
             glBindVertexArray(vao);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ebo);
 
+            glViewport(0,0,window_width/2,window_height);
             glDrawElementsInstanced(GL_TRIANGLES,6,GL_UNSIGNED_INT,(void*)0,cols*rows);
+
+            glViewport(window_width/2,0,window_width/2,window_height);
+            glDrawElementsInstancedBaseInstance(GL_TRIANGLES,6,GL_UNSIGNED_INT,(void*)(sizeof(int)*6),o_rows*o_cols,rows*cols);
+        
             SDL_GL_SwapWindow(window);
         }
     }

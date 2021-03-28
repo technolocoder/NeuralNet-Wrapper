@@ -16,3 +16,7 @@ target_link_directories(image_conv PUBLIC /usr/local/lib)
 add_executable(image_feedforward image_feedforward.cpp)
 target_link_libraries(image_feedforward PUBLIC neural_net GL GLU GLEW SDL2)
 target_link_directories(image_feedforward PUBLIC /usr/local/lib)
+
+add_executable(net_memcheck net_memcheck.cpp)
+target_link_libraries(net_memcheck PUBLIC neural_net GL GLU GLEW SDL2)
+target_link_directories(net_memcheck PUBLIC /usr/local/lib)

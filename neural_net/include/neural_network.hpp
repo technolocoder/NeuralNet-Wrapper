@@ -15,11 +15,17 @@ public:
 
     void initialize(int _sample_size, int _layer_count);
     
+    void init_from_neuralnet(int _sample_size ,neural_network net);
+    void save_neural_net(const char *path);
+    void load_neural_net(const char *path);
+
     void add_input_layer(int width, int height ,int depth, bool batch_normalized);
     void add_pooling_layer(int filter_width, int filter_height, int stride_width, int stride_height ,POOLING_TYPE pooling_type);
     void add_convolution_layer(int filter_width, int filter_height, int stride_width, int stride_height,int size, ACTIVATION_TYPES activation);
     void add_convolution_layer(int filter_width, int filter_height, int stride_width, int stride_height,int size, ACTIVATION_TYPES activation, T *filter);
     void add_flatten_layer();
+    void add_fully_connected(int layer_size, ACTIVATION_TYPES activation);
+    void add_softmax_layer();
     void construct_neuralnet();
 
     void set_sample_size(int _sample_size); // Must be below the initialized sample size

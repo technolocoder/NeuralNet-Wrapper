@@ -3,7 +3,7 @@
 
 #include "common.hpp"
 TEMPLATE struct _FL{
-    int total;
+    int total,output_size;
     T *ptr;
 };
 
